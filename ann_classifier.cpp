@@ -2,6 +2,7 @@
 //
 // g++ -O3 -I. -msse3 ann_classifier.cpp -shared -o ann.dll
 // g++ -O3 -I. ann_classifier.cpp -shared -o ann.dll
+// g++ -O3 -msse3 -mstackrealign  -I. ann_classifier.cpp -shared -o ann_sse.dll
 //
 
 /*
@@ -40,38 +41,61 @@ extern "C" {
 */
 
 
-    void* ann_create(int* vec, int size) {
+    void* ann_create(int* vec, int size, double dor) {
         ma::random::seed();
         std::vector<int> sizes;
         for (int i = 0; i < size; ++i)
             sizes.push_back(vec[i]);
 
-        ma::ann_leaner<DATATYPE>* ann = new ma::ann_leaner<DATATYPE>(sizes);
+        ma::ann_leaner<DATATYPE>* ann = new ma::ann_leaner<DATATYPE>(sizes, dor);
         return ann;
     }
 
 
-    void ann_fit(void* ann, const DATATYPE* X, const DATATYPE* Y, int rows, DATATYPE* alpha, DATATYPE lambda, int epoches) {
+    void ann_fit(void* ann, const DATATYPE* X, const DATATYPE* Y, int rows, DATATYPE* alpha, DATATYPE lambda, int epoches, DATATYPE* cost) {
 
         int cost_cnt = 0;
         DATATYPE prev_cost = 999.;
-        DATATYPE cost = 0;
 
         vector<DATATYPE> ww, bb;
 
         for (int e = 0; e < epoches; ++e) {
-            static_cast< ma::ann_leaner<DATATYPE>* >(ann)->save_weights(ww, bb);
-            cost = static_cast< ma::ann_leaner<DATATYPE>* >(ann)->fit_minibatch(X, Y, rows, *alpha, lambda);
-            if (prev_cost <= cost) {
-                *alpha -= .0001;
+//            static_cast< ma::ann_leaner<DATATYPE>* >(ann)->save_weights(ww, bb);
+            *cost = static_cast< ma::ann_leaner<DATATYPE>* >(ann)->fit_minibatch(X, Y, rows, *alpha, lambda);
+/*
+            if (prev_cost < *cost) {
+                DATATYPE d = *alpha / 100.;
+                *alpha -= d;
                 static_cast< ma::ann_leaner<DATATYPE>* >(ann)->restore_weights(ww, bb);
             }
             else {
-                prev_cost = cost;
+                prev_cost = *cost;
             }
+*/
         }
-        cout << setprecision(16) << cost << " [" << *alpha << "]" << endl;
 
+    }
+
+
+    void ann_get_weights(void* ann, DATATYPE* WW, DATATYPE* BB) {
+        vector<DATATYPE> ww, bb;
+        static_cast< ma::ann_leaner<DATATYPE>* >(ann)->save_weights(ww, bb);
+
+        for (size_t i = 0; i < ww.size(); ++i)
+            WW[i] = ww[i];
+        for (size_t i = 0; i < bb.size(); ++i)
+            BB[i] = bb[i];
+    }
+
+    void ann_set_weights(void* ann, DATATYPE* WW, int ww_size, DATATYPE* BB, int bb_size) {
+        vector<DATATYPE> ww, bb;
+
+        for (size_t i = 0; i < ww_size; ++i) 
+            ww.push_back(WW[i]);
+        for (size_t i = 0; i < bb_size; ++i)
+            bb.push_back(BB[i]);
+
+        static_cast< ma::ann_leaner<DATATYPE>* >(ann)->restore_weights(ww, bb);
     }
 
 

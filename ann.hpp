@@ -27,6 +27,8 @@ class ann_leaner {
     memory::ptr_vec<T> ww_;
     memory::ptr_vec<T> bb_;
 
+    memory::ptr_vec<T> ww_do_;
+
     memory::ptr_vec<T> deltas_;
 
     memory::ptr_vec<T> bb_deriv_;
@@ -38,11 +40,12 @@ class ann_leaner {
 
 
 public:
-    ann_leaner(const vector<int>& sizes) :
+    ann_leaner(const vector<int>& sizes, double dor) :
         sizes_(sizes),
         aa_(),
         ww_(),
         bb_(),
+        ww_do_(),
         deltas_(),
         bb_deriv_(),
         ww_deriv_(),
@@ -67,6 +70,8 @@ public:
         bb_.reset(new T[total_bb_size_]);
         ww_.reset(new T[total_ww_size_]);
 
+        ww_do_.reset(new T[total_ww_size_]);
+
         deltas_.reset(new T[total_aa_size_]);
 
         // partial derivatives
@@ -86,6 +91,8 @@ public:
             int size = sizes_[l] * sizes_[l-1];
             for (int i = 0; i < size; ++i) {
                 ww_[ww_idx + i] = (ww_[ww_idx + i] - .5);
+
+                ww_do_[ww_idx + i] = dor >= random::rand<double>() ? 0. : 1.;
             }
             ww_idx += size;
         }
@@ -176,8 +183,9 @@ public:
         int ww_idx = 0;
 
         for (int l = 1; l < layers_num; ++l) {
-            linalg::dot_m2v<T>(&ww_[ww_idx], S, &aa_[aa_idx], sizes_[l], sizes_[l - 1]);
-            linalg::sum_v2v<T>(&aa_[aa_idx], &bb_[bb_idx], sizes_[l]);
+/*
+            linalg::dot_m2v(&ww_[ww_idx], S, &aa_[aa_idx], sizes_[l], sizes_[l - 1]);
+            linalg::sum_v2v(&aa_[aa_idx], &bb_[bb_idx], sizes_[l]);
 
             if (l == (layers_num - 1)) {
                 //softmax(&aa_[aa_idx], sizes_[l]);
@@ -186,6 +194,24 @@ public:
             else {
                 sigmoid(&aa_[aa_idx], sizes_[l]);
             }
+*/
+            size_t bbi = 0;
+            size_t ssi = 0;
+            T ss = 0.;
+
+            size_t size = (sizes_[l] * sizes_[l - 1]);
+            size_t step = sizes_[l-1];
+
+            for (size_t i = 0; i < size; i += step) {
+                ss = linalg::dot_v2v(&ww_[ww_idx + i], S, step);
+
+                ss += bb_[bb_idx + bbi];
+                ss = 1. / (1. + ::exp(-ss));
+                aa_[aa_idx + bbi] = ss;
+                ss = 0.;
+                bbi = (bbi + 1) % sizes_[l];
+            }
+
 
             S = &aa_[aa_idx];
 
@@ -217,8 +243,8 @@ public:
 
                 // calculate derivatives
                 for (int a = 0; a < sizes_[l_idx]; ++a) {
-                    //cost += (aa_[aa_idx + a] - y[a]) * (aa_[aa_idx + a] - y[a]);
-                    cost += logloss(aa_[aa_idx + a], y[a]);
+                    cost += (aa_[aa_idx + a] - y[a]) * (aa_[aa_idx + a] - y[a]);
+                    //cost += logloss(aa_[aa_idx + a], y[a]);
 
 
                     T delta = (aa_[aa_idx + a] - y[a]) ;
@@ -236,20 +262,22 @@ public:
                 int aa_idx_next = aa_idx + sizes_[l_idx];
 
                 // calculate derivatives
-                for (int a = 0; a < sizes_[l_idx]; ++a) {
 
-                    T delta = 0;
-                    for (int a_next = 0; a_next < sizes_[l_idx + 1]; ++a_next) {
-                        delta += deltas_[aa_idx_next + a_next] * ww_[ww_idx + a_next * sizes_[l_idx] + a];
-                    }
+                double tmp_deltas[sizes_[l_idx]];
+                linalg::fill(tmp_deltas, sizes_[l_idx], 0.);
 
-
-                    T sig_deriv = aa_[aa_idx + a] * (1. - aa_[aa_idx + a]);
-                    delta *= sig_deriv;
-
-                    deltas_[aa_idx + a] = delta;
-                    bb_deriv_[aa_idx + a] += delta;
+                for (int a_next = 0; a_next < sizes_[l_idx + 1]; ++a_next) {
+                    double scal = deltas_[aa_idx_next + a_next];
+                    linalg::mul_add_v2s(&ww_[ww_idx + a_next * sizes_[l_idx]], scal, tmp_deltas, sizes_[l_idx]);
                 }
+
+                for (int a = 0; a < sizes_[l_idx]; ++a) {
+                    T sig_deriv = aa_[aa_idx + a] * (1. - aa_[aa_idx + a]);
+                    tmp_deltas[a] *= sig_deriv;
+                    deltas_[aa_idx + a] = tmp_deltas[a];
+                    bb_deriv_[aa_idx + a] += tmp_deltas[a];
+                }
+                
             }
         }
 
@@ -303,7 +331,7 @@ public:
 
         average_deriv((T)rows);
 
-/*
+
         T reg = 0.;
 
         if (lambda > 0.) {
@@ -312,8 +340,9 @@ public:
                 ww_deriv_[w] += lambda * ww_[w] / rows;
             }
             reg = reg * lambda / (2. * rows);
+            cost += reg;
         }
-*/
+
         // update biases and weights
 
         for (int b = 0; b < total_bb_size_; ++b) {
@@ -321,7 +350,7 @@ public:
         }
 
         for (int w = 0; w < total_ww_size_; ++w) {
-            ww_[w] -= alpha * ww_deriv_[w];
+            ww_[w] -= alpha * ww_deriv_[w] * ww_do_[w];
         }
 
         return cost;

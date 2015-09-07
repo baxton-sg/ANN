@@ -2,6 +2,8 @@
 #if !defined LINALG_DOT_HPP
 #define LINALG_DOT_HPP
 
+
+#include <pmmintrin.h>
 #include <memory.hpp>
 
 using namespace std;
@@ -47,12 +49,41 @@ namespace linalg {
     // Elementwise sum of 2 vectors
     // the result goes to v1
     // Semantic: v1 += v2
+/*
     template<class T>
     void sum_v2v(T* v1, const T* v2, int size) {
         for (int i = 0; i < size; ++i) {
             v1[i] += v2[i];
         }
     }
+*/
+    void sum_v2v(double* v1, const double* v2, int size) {
+        int size_4 = size / 4;
+        for (int i = 0; i < size_4; ++i) {
+            __m128d r1 = _mm_loadu_pd((v1+i*4+0));
+            __m128d r2 = _mm_loadu_pd((v1+i*4+2));
+
+            __m128d r3 = _mm_loadu_pd((v2+i*4+0));
+            __m128d r4 = _mm_loadu_pd((v2+i*4+2));
+
+            __m128d r5 = _mm_add_pd(r1, r3);
+            __m128d r6 = _mm_add_pd(r2, r4);
+
+            _mm_storeu_pd((v1+i*4+0), r5);
+            _mm_storeu_pd((v1+i*4+2), r6);
+        }
+
+        // if size is not devisible by 4
+        for (int i = size_4 * 4; i < size; ++i) {
+            v1[i] += v2[i];
+        }
+    }
+
+
+
+
+
+
 
     template<class T>
     void sub_v2v(const T* v1, const T* v2, T* result, int size) {
@@ -60,6 +91,32 @@ namespace linalg {
             result[i] = v1[i] - v2[i];
         }
     }
+/*
+    void sub_v2v(const double* v1, const double* v2, double* result, int size) {
+        int size_4 = size / 4;
+        for (int i = 0; i < size_4; ++i) {
+            __m128d r1 = _mm_loadu_pd((v1+i*4+0));
+            __m128d r2 = _mm_loadu_pd((v1+i*4+2));
+
+            __m128d r3 = _mm_loadu_pd((v2+i*4+0));
+            __m128d r4 = _mm_loadu_pd((v2+i*4+2));
+
+            __m128d r5 = _mm_sub_pd(r1, r3);
+            __m128d r6 = _mm_sub_pd(r2, r4);
+
+            _mm_storeu_pd((result+i*4+0), r5);
+            _mm_storeu_pd((result+i*4+2), r6);
+        }
+
+        // if size is not devisible by 4
+        for (int i = size_4 * 4; i < size; ++i) {
+            result[i] = v1[i] - v2[i];
+        }
+    }
+*/
+
+
+
 
     template<class T>
     void mul_v2v(T* v1, const T* v2, int size) {
@@ -83,6 +140,7 @@ namespace linalg {
         }
     }
 
+/*
     template<class T>
     void mul_add_v2s(const T* v1, T s, T* result, int size) {
         int size_4 = size / 4;
@@ -96,7 +154,47 @@ namespace linalg {
             result[i] += v1[i] * s;
         }
     }
+*/
+    void mul_add_v2s(const double* v1, const double s, double* result, int size) {
+        __m128d val = _mm_set_pd(s,s);
 
+        int size_8 = size / 8;
+        for (int i = 0; i < size_8; ++i) {
+            __m128d r1 = _mm_loadu_pd((v1+i*8+0));
+            __m128d r2 = _mm_loadu_pd((v1+i*8+2));
+            __m128d r3 = _mm_loadu_pd((v1+i*8+4));
+            __m128d r4 = _mm_loadu_pd((v1+i*8+6));
+
+
+            __m128d a1 = _mm_loadu_pd((result+i*8+0));
+            __m128d a2 = _mm_loadu_pd((result+i*8+2));
+            __m128d a3 = _mm_loadu_pd((result+i*8+4));
+            __m128d a4 = _mm_loadu_pd((result+i*8+6));
+
+
+            __m128d r5 = _mm_mul_pd(r1, val);
+            __m128d r6 = _mm_mul_pd(r2, val);
+            __m128d r7 = _mm_mul_pd(r3, val);
+            __m128d r8 = _mm_mul_pd(r4, val);
+
+
+            a1 = _mm_add_pd(a1, r5);
+            a2 = _mm_add_pd(a2, r6);
+            a3 = _mm_add_pd(a3, r7);
+            a4 = _mm_add_pd(a4, r8);
+
+
+            _mm_storeu_pd((result+i*8+0), a1);
+            _mm_storeu_pd((result+i*8+2), a2);
+            _mm_storeu_pd((result+i*8+4), a3);
+            _mm_storeu_pd((result+i*8+6), a4);
+        }
+
+        // if size is not devisible by 4
+        for (int i = size_8 * 8; i < size; ++i) {
+            result[i] += v1[i] * s;
+        }
+    }
 
     template<class T>
     void mul_sub_v2s_use_deltas(const T* v1, T s, T* result, T* deltas, int size) {
@@ -140,6 +238,7 @@ namespace linalg {
 
     // Dot product of 2 vectors
     // Ssemantic: v1 . v2
+/*
     template<class T>
     T dot_v2v(const T* v1, const T* v2, int size) {
         T result = (T)0;
@@ -150,15 +249,68 @@ namespace linalg {
 
         return result;
     }
+*/
+
+    double dot_v2v(const double* v1, const double* v2, int size) {
+        __m128d a1 = _mm_set_pd(0,0);
+        __m128d a2 = _mm_set_pd(0,0);
+
+        int size_8 = size / 8;
+        for (int i = 0; i < size_8; ++i) {
+            __m128d r1 = _mm_loadu_pd(v1+i*8+0);
+            __m128d r2 = _mm_loadu_pd(v1+i*8+2);
+            __m128d r3 = _mm_loadu_pd(v1+i*8+4);
+            __m128d r4 = _mm_loadu_pd(v1+i*8+6);
+
+
+            __m128d r5 = _mm_loadu_pd(v2+i*8+0);
+            __m128d r6 = _mm_loadu_pd(v2+i*8+2);
+            __m128d r7 = _mm_loadu_pd(v2+i*8+4);
+            __m128d r8 = _mm_loadu_pd(v2+i*8+6);
+
+
+            __m128d r9  = _mm_mul_pd(r1, r5);
+            __m128d r10 = _mm_mul_pd(r2, r6);
+            __m128d r11 = _mm_hadd_pd(r9, r10);
+            a1 = _mm_add_pd(a1, r11);
+
+            r9  = _mm_mul_pd(r3, r7);
+            r10 = _mm_mul_pd(r4, r8);
+            r11 = _mm_hadd_pd(r9, r10);
+            a2 = _mm_add_pd(a2, r11);
+        }
+        double tmp[2];
+
+        _mm_storeu_pd(tmp, a1);
+        double result = tmp[0] + tmp[1];
+
+        _mm_storeu_pd(tmp, a2);
+        result += tmp[0] + tmp[1];
+
+        // if size is not devisible by 4
+        for (int i = size_8 * 8; i < size; ++i) {
+            result += v1[i] * v2[i];
+        }
+
+        return result;
+    }
+
 
     // Dot product of matrix and vector
     // Semantic: m . v
+
     template<class T>
     void dot_m2v(const T* m, const T* v, T* result, int rows, int columns) {
         for (int r = 0; r < rows; ++r) {
             result[r] = dot_v2v(v, &m[r * columns], columns);
         }
     }
+
+
+
+
+
+
 
     // Dot product of matrix and vector
     // Semantic: m . v

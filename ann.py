@@ -4,29 +4,30 @@
 import os
 import sys
 import numpy as np
-import scipy as sp
-from sklearn.ensemble import RandomForestClassifier
-import matplotlib.pyplot as plt
 import ctypes
 
-#import ann_py
 
 #ANN_DLL = ctypes.cdll.LoadLibrary(r"/home/maxim/kaggle/ann/libann.so")
-ANN_DLL = ctypes.cdll.LoadLibrary(r"c:\\temp\\test_python\\ann\\ann.dll")
+ANN_DLL = ctypes.cdll.LoadLibrary(r"c:\\temp\\test_python\\ann\\ann_sse2.dll")
 
 
 
 
 class ANN(object):
-    def __init__(self, sizes):
+    def __init__(self, sizes, dor):
         self.ss = np.array(sizes, dtype=np.int32)
-        self.ann = ANN_DLL.ann_create(self.ss.ctypes.data, ctypes.c_int(self.ss.shape[0]))
-        self.alpha = ctypes.c_double(.6)
+        self.ann = ANN_DLL.ann_create(self.ss.ctypes.data, ctypes.c_int(self.ss.shape[0]), ctypes.c_double(dor))
+        self.alpha = ctypes.c_double(.004)
+        self.cost = ctypes.c_double(0.)
 
 
-    def partial_fit(self, X, Y, dummy):
+    def partial_fit(self, X, Y, dummy=None, n_iter=1, L=0., A=.004):
+        self.alpha = ctypes.c_double(A)
         R = X.shape[0] if len(X.shape) == 2 else 1
-        ANN_DLL.ann_fit(ctypes.c_void_p(self.ann), X.ctypes.data, Y.ctypes.data, ctypes.c_int(R), ctypes.addressof(self.alpha), ctypes.c_double(0), ctypes.c_int(10))
+        ANN_DLL.ann_fit(ctypes.c_void_p(self.ann), X.ctypes.data, Y.ctypes.data, ctypes.c_int(R), ctypes.addressof(self.alpha), ctypes.c_double(L), ctypes.c_int(n_iter), ctypes.addressof(self.cost))
+
+    def fit(self, X, Y):
+        self.partial_fit(X, Y, n_iter=1000)
 
 
     def predict_proba(self, X):
@@ -49,5 +50,27 @@ class ANN(object):
         return predictions
 
 
+
+    def get_weights(self):
+        ww_size = 0
+        bb_size = 0
+
+        for l in range(1, self.ss.shape[0]):
+            bb_size += self.ss[-l]
+            ww_size += self.ss[-l] * self.ss[-l-1]
+            
+        ww = np.zeros((ww_size,), dtype=np.float64)
+        bb = np.zeros((bb_size,), dtype=np.float64)
+
+        ANN_DLL.ann_get_weights(ctypes.c_void_p(self.ann), ww.ctypes.data, bb.ctypes.data)
+
+        return ww, bb
+
+
+    def set_weights(self, ww, bb):
+        ww_size = ww.shape[0]
+        bb_size = bb.shape[0]
+
+        ANN_DLL.ann_set_weights(ctypes.c_void_p(self.ann), ww.ctypes.data, ctypes.c_int(ww_size), bb.ctypes.data, ctypes.c_int(bb_size))
 
 

@@ -31,8 +31,14 @@ def print_num(img, mul=1):
 
 
 def test(ann, images):
+
+    N = images.shape[0]
+    ii = range(N)
+    np.random.shuffle(ii)
+    ii = ii[:10]
+
     to_show = None
-    for i in range(images.shape[0]):
+    for i in ii:
         tmp = images[i].copy()
 	p = ann.predict_proba(tmp)
 
@@ -85,6 +91,17 @@ images /= 255
 print_num(images[1], 255)
 
 
+train_ii = range(N)
+np.random.shuffle(train_ii)
+
+N_train = int(N * .8)
+N_test  = N - N_train
+test_ii = train_ii[N_train:]
+train_ii = train_ii[:N_train]
+
+
+
+
 
 M = 128
 ann = ANN([S, M, S], .0)
@@ -98,10 +115,9 @@ avr_cost = 0.
 cnt = 0.
 EPOCHES = 1000
 for e in range(EPOCHES):
-    indices = range(N)
-    np.random.shuffle(indices)
+    np.random.shuffle(train_ii)
 
-    for i in indices:
+    for i in train_ii:
         tmp = images[i]
 
         ww, bb = ann.get_weights()
@@ -125,8 +141,13 @@ for e in range(EPOCHES):
 
         cmd = check_cmd()
         if TEST == cmd:
-            test(ann, images[:10])
+            i = np.random.randint(0, N - 10)
+            test(ann, images[test_ii])
 
 
 
-test(ann, images[:10])
+test(ann, images[test_ii])
+
+
+
+
